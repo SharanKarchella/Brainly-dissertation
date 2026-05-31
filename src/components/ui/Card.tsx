@@ -1,10 +1,13 @@
+import { useEffect } from "react";
 import { ShareIcon } from "../../icons/ShareIcon";
+import { DeleteIcon } from "../../icons/DeleteIcon";
 
 interface CardProps {
   title: string;
   link: string;
   type: "twitter" | "youtube";
   tags?: string[];
+  onDelete?: () => void;
 }
 
 const TAG_COLORS = [
@@ -23,38 +26,70 @@ function tagColor(tag: string) {
   return TAG_COLORS[h % TAG_COLORS.length];
 }
 
-export function Card({ title, link, type, tags }: CardProps) {
+function getYoutubeEmbedUrl(link: string): string {
+  try {
+    const url = new URL(link);
+    if (url.hostname === "youtu.be") {
+      return `https://www.youtube.com/embed${url.pathname}`;
+    }
+    const videoId = url.searchParams.get("v");
+    if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+  } catch {}
+  return link;
+}
+
+export function Card({ title, link, type, tags, onDelete }: CardProps) {
+  useEffect(() => {
+    if (type === "twitter") {
+      const twttr = (window as any).twttr;
+      if (twttr?.widgets?.load) twttr.widgets.load();
+    }
+  }, [type, link]);
+
   return (
     <div className="p-2">
       <div className="p-4 bg-white rounded-md border-gray-200 max-w-72 border">
 
         <div className="flex justify-between">
-          <div className="flex items-center text-md">
-            <div className="text-gray-500 pr-2">
+          <div className="flex items-center text-md truncate pr-2">
+            <div className="text-gray-500 pr-2 shrink-0">
               <ShareIcon />
             </div>
-            {title}
+            <span className="truncate">{title}</span>
           </div>
 
-          <div className="flex items-center">
-            <div className=" pr-2 text-gray-500">
-              <a href= {link} target="_blank">
-                <ShareIcon />
-              </a>
-            </div>
-
-            <div className="text-gray-500">
+          <div className="flex items-center gap-1 shrink-0">
+            <a href={link} target="_blank" className="text-gray-500 hover:text-purple-600">
               <ShareIcon />
-            </div>
+            </a>
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                className="text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <DeleteIcon />
+              </button>
+            )}
           </div>
         </div>
 
         <div className="pt-4">
-          
-            {type === "youtube" && <iframe className="w-full" height="315" src={link.replace("watch", "embed")} title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen></iframe> }
-
-            {type === "twitter" && <blockquote className="twitter-tweet"><a href={link}>December 25, 2025</a></blockquote> 
-            }
+          {type === "youtube" && (
+            <iframe
+              className="w-full"
+              height="200"
+              src={getYoutubeEmbedUrl(link)}
+              title="YouTube video player"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          )}
+          {type === "twitter" && (
+            <blockquote className="twitter-tweet">
+              <a href={link}></a>
+            </blockquote>
+          )}
         </div>
 
         {tags && tags.length > 0 && (
@@ -69,11 +104,7 @@ export function Card({ title, link, type, tags }: CardProps) {
             ))}
           </div>
         )}
-
       </div>
     </div>
   );
 }
-
-
-

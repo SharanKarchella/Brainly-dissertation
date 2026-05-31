@@ -1,5 +1,4 @@
-import axios from "axios";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { CreateContentModal } from "../components/ui/CreateContentModal";
@@ -8,8 +7,6 @@ import { PlusIcon } from "../icons/PlusIcon";
 import { ShareIcon } from "../icons/ShareIcon";
 import { Sidebar } from "../components/ui/Sidebar";
 import { useContentTags } from "../hooks/useContentTags";
-
-const BACKEND_URL = "http://localhost:3000";
 
 interface Content {
   type: string;
@@ -20,23 +17,18 @@ interface Content {
 function Dashboard() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [contents, setContents] = useState<Content[]>([]);
+  const [contents, setContents] = useState<Content[]>(() => {
+    try { return JSON.parse(localStorage.getItem("brainly_contents") ?? "[]"); }
+    catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("brainly_contents", JSON.stringify(contents));
+  }, [contents]);
   const [searchResults, setSearchResults] = useState<Content[] | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const { tagMap, allTags } = useContentTags(contents);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    axios
-      .get(`${BACKEND_URL}/api/v1/content`, {
-        headers: { Authorization: token },
-      })
-      .then((res) => setContents(res.data.content ?? []))
-      .catch(console.error);
-  }, [modalOpen]);
-
-  // Smart search results take priority; otherwise apply sidebar type + tag filters
   const displayedContents =
     searchResults !== null
       ? searchResults
@@ -46,26 +38,20 @@ function Dashboard() {
           return typeMatch && tagMatch;
         });
 
-  const handleShareBrain = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("You need to be logged in to share your brain.");
+  function handleDelete(index: number) {
+    setContents((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleShareBrain() {
+    if (contents.length === 0) {
+      alert("Add some content first before sharing!");
       return;
     }
-    try {
-      const response = await axios.post(
-        `${BACKEND_URL}/api/v1/brain/share`,
-        { share: true },
-        { headers: { Authorization: token } }
-      );
-      const shareUrl = `${window.location.origin}/brain/${response.data.hash}`;
-      await navigator.clipboard.writeText(shareUrl);
-      alert("URL copied to clipboard!");
-    } catch (error) {
-      console.error("Failed to share brain", error);
-      alert("Something went wrong while sharing. Please try again.");
-    }
-  };
+    const encoded = btoa(JSON.stringify(contents));
+    const url = `${window.location.origin}/brain/view#${encoded}`;
+    navigator.clipboard.writeText(url);
+    alert("Share link copied to clipboard!");
+  }
 
   return (
     <div>
@@ -80,6 +66,7 @@ function Dashboard() {
         <CreateContentModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
+          onAdd={(newContent) => setContents((prev) => [...prev, newContent])}
         />
         <div className="flex justify-end gap-4 mb-4">
           <Button
@@ -108,16 +95,17 @@ function Dashboard() {
           {displayedContents.length > 0 ? (
             displayedContents.map((content, index) => (
               <Card
-                key={content.link || index}
+                key={content.link + index}
                 type={content.type as "twitter" | "youtube"}
                 link={content.link}
                 title={content.title}
                 tags={tagMap[content.link]}
+                onDelete={() => handleDelete(contents.indexOf(content))}
               />
             ))
           ) : (
             <div className="text-gray-500 w-full mt-10 text-center text-lg">
-              {searchResults !== null ? "No results match your search." : "No content found."}
+              {searchResults !== null ? "No results match your search." : `No content yet — click "Add Content" to get started.`}
             </div>
           )}
         </div>
@@ -127,5 +115,3 @@ function Dashboard() {
 }
 
 export default Dashboard;
-
-

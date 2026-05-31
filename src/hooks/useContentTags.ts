@@ -22,7 +22,11 @@ export function useContentTags(contents: Content[]) {
     }
 
     const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if (!apiKey) return;
+    if (!apiKey) {
+      console.warn("[AutoTag] VITE_ANTHROPIC_API_KEY not found — restart dev server after adding .env");
+      return;
+    }
+    console.log("[AutoTag] Generating tags for:", untagged.map(c => c.title));
 
     const list = untagged
       .map((c, i) => `${i}. [${c.type.toUpperCase()}] "${c.title}"`)
@@ -59,10 +63,11 @@ export function useContentTags(contents: Content[]) {
           if (item) newEntries[item.link] = tags as string[];
         });
         const updated = { ...current, ...newEntries };
+        console.log("[AutoTag] Tags generated:", newEntries);
         saveTagMap(updated);
         setTagMap(updated);
       })
-      .catch(() => {});
+      .catch((err) => console.error("[AutoTag] Failed:", err));
   }, [contents]);
 
   const allTags = [...new Set(contents.flatMap((c) => tagMap[c.link] ?? []))].sort();

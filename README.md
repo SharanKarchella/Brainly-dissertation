@@ -169,3 +169,6 @@ public/
 - **oEmbed CORS** — Twitter's oEmbed endpoint may be blocked by some browser extensions. Title auto-fill falls back silently.
 - **Haiku model** — uses `claude-haiku-4-5-20251001` (fast and cheap). Upgrade to Sonnet for higher-quality tagging/search at higher cost.
 - **Evaluation is manual** — the eval harness measures what Claude produces against your personal ground-truth judgements. It does not have a pre-built benchmark dataset.
+- **Share links are encoded, not encrypted** — `encodeShare()` is base64, which is trivially reversible. Anyone holding the URL can read the entire brain, and a link cannot be expired or revoked once sent. Large brains may also exceed browser URL length limits.
+- **Unused backend routes** — `Signin.tsx`, `Signup.tsx`, and `SharedBrain.tsx` still call `http://localhost:3000`, a server that is intentionally out of scope for this frontend-only project. The `/brain/:hash` route therefore does not resolve; use `/brain/view#<encoded>` instead. These files are retained to show the original client/server design.
+- **No retry or backoff** — a rate-limited (429) or overloaded API response surfaces directly to the user rather than being retried. This matters most in the eval harness, which issues requests in quick succession.

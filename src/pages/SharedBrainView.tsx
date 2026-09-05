@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "../components/ui/Card";
 import { Logo } from "../icons/Logo";
+import { decodeShare } from "../utils/shareCodec";
 
 interface Content {
   type: "twitter" | "youtube";
@@ -16,7 +17,7 @@ export function SharedBrainView() {
     try {
       const hash = window.location.hash.slice(1);
       if (!hash) { setError(true); return; }
-      const decoded: Content[] = JSON.parse(atob(hash));
+      const decoded = decodeShare<Content[]>(hash);
       setContents(decoded);
     } catch {
       setError(true);

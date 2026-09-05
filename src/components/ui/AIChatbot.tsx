@@ -1,32 +1,36 @@
+/**
+ * AIChatbot — floating conversational assistant that knows about the user's
+ * saved content.
+ *
+ * Uses a standard messages API call (not tool_use) because the response here
+ * is free-form text, not structured data.
+ */
 import { useState, useRef, useEffect } from "react";
+import { logCost } from "../../ai/costs";
+import type { Content } from "../../types";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-interface Content {
-  title: string;
-  link: string;
-  type: string;
-}
-
 interface AIChatbotProps {
   contents: Content[];
-  tagMap: Record<string, string[]>;
+  tagMap:   Record<string, string[]>;
 }
 
-const WELCOME = "Hi! Ask me anything about your saved content. Try: \"What have I saved?\" or \"What topics am I learning about?\"";
+const WELCOME =
+  'Hi! Ask me anything about your saved content. Try: "What have I saved?" or "What topics am I learning about?"';
 
 export function AIChatbot({ contents, tagMap }: AIChatbotProps) {
-  const [open, setOpen] = useState(false);
+  const [open,    setOpen]    = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: WELCOME },
   ]);
-  const [input, setInput] = useState("");
+  const [input,   setInput]   = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef  = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,23 +53,34 @@ export function AIChatbot({ contents, tagMap }: AIChatbotProps) {
     if (!apiKey) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "No API key found. Add VITE_ANTHROPIC_API_KEY to your .env file and restart the dev server." },
+        {
+          role: "assistant",
+          content:
+            "No API key found. Add VITE_ANTHROPIC_API_KEY to your .env file and restart the dev server.",
+        },
       ]);
       setLoading(false);
       return;
     }
 
+    // Build a content inventory string for the system prompt
     const contentList =
       contents.length > 0
         ? contents
             .map((c) => {
-              const tags = tagMap[c.link] ?? [];
-              return `- [${c.type.toUpperCase()}] "${c.title}"${tags.length ? ` (tags: ${tags.join(", ")})` : ""}`;
+              const tags    = tagMap[c.link] ?? [];
+              const tagPart = tags.length ? ` (tags: ${tags.join(", ")})` : "";
+              return `- [${c.type.toUpperCase()}] "${c.title}"${tagPart}`;
             })
             .join("\n")
         : "No content saved yet.";
 
-    const systemPrompt = `You are a helpful AI assistant for Brainly, a personal second-brain app. The user has saved the following content:\n\n${contentList}\n\nAnswer questions about their saved content concisely and helpfully. If they ask what they've saved, summarize it. If they ask about topics, use the tags. Keep responses short and friendly.`;
+    const systemPrompt =
+      `You are a helpful AI assistant for Brainly, a personal second-brain app. ` +
+      `The user has saved the following content:\n\n${contentList}\n\n` +
+      `Answer questions about their saved content concisely and helpfully. ` +
+      `Summarise if asked what they've saved. Use the tags when asked about topics. ` +
+      `Keep responses short and friendly.`;
 
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -87,6 +102,10 @@ export function AIChatbot({ contents, tagMap }: AIChatbotProps) {
       });
 
       const data = await res.json();
+
+      // Log token usage and estimated cost
+      if (data.usage) logCost(data.usage, "AIChatbot");
+
       const reply = data.content?.[0]?.text ?? "Sorry, I couldn't get a response.";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
@@ -101,7 +120,7 @@ export function AIChatbot({ contents, tagMap }: AIChatbotProps) {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating toggle button */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="fixed bottom-6 right-6 w-14 h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-50 transition-colors"
@@ -113,7 +132,6 @@ export function AIChatbot({ contents, tagMap }: AIChatbotProps) {
       {/* Chat panel */}
       {open && (
         <div className="fixed bottom-24 right-6 w-80 h-[440px] bg-white rounded-2xl shadow-2xl flex flex-col z-50 border border-gray-200 overflow-hidden">
-          {/* Header */}
           <div className="bg-purple-600 text-white px-4 py-3 flex items-center gap-2 shrink-0">
             <span className="text-lg">✨</span>
             <div>
@@ -122,10 +140,12 @@ export function AIChatbot({ contents, tagMap }: AIChatbotProps) {
             </div>
           </div>
 
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
                 <div
                   className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                     msg.role === "user"
@@ -147,7 +167,6 @@ export function AIChatbot({ contents, tagMap }: AIChatbotProps) {
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <div className="p-3 border-t border-gray-100 flex gap-2 shrink-0">
             <input
               ref={inputRef}

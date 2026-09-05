@@ -1,36 +1,86 @@
 # Brainly Frontend
 
-A personal second-brain app where you can save, organize, and share YouTube videos and tweets — with AI-powered features built on top.
-
-## What it does
-
-- Save YouTube videos and Twitter/X links as cards on your dashboard
-- Cards render the actual embedded video or tweet inline
-- **Auto-fill title** — paste a YouTube or Twitter link and the title fills itself automatically (no API key needed, uses free oEmbed APIs)
-- Filter content by type (YouTube / Twitter) using the sidebar
-- AI auto-tags every piece of content with topic labels (e.g. programming, music, finance)
-- Filter content by AI-generated topic tags from the sidebar
-- AI Smart Search — search in natural language ("coding tutorials", "funny stuff")
-- Delete any card
-- Share your entire brain as a link — anyone can open it and see your saved content
-- All data is saved in the browser (localStorage) — no account or backend needed
+A personal second-brain app — save YouTube videos and tweets, auto-tag them with AI, and search your library semantically.
 
 ---
 
-## Tech Stack
+## What it does
+
+- Save YouTube videos and Twitter/X links as embedded cards
+- **Auto-fill title** — paste a link and the title (and channel name) fills in automatically via free oEmbed APIs
+- **AI auto-tagging** — Claude assigns 2–3 topic tags from an 18-category vocabulary; tags are cached in localStorage and not re-generated on reload
+- **AI semantic search** — search in natural language; Claude returns results ranked by relevance (0–1 score) with a one-line reason per match
+- **Keyword search** — instant client-side substring fallback; also available as a standalone mode for baseline comparison
+- **Compare mode** — run AI and keyword search side-by-side on the same query; useful for dissertation evaluation
+- **AI chatbot** — floating assistant that answers questions about your saved content
+- Filter by content type (YouTube / Twitter) and by tag
+- Delete any card; share your entire brain as a base64-encoded URL
+- **Evaluation harness** at `/eval` — computes Precision/Recall/F1 (tags) and MRR/NDCG@5 (search) against your own ground-truth data
+
+---
+
+## Architecture (frontend-only by design)
+
+This is a **fully client-side app**. There is no backend, no server, and no database.
+
+| Concern | Solution |
+|---|---|
+| Content storage | `localStorage` in the browser |
+| AI features | Direct `fetch` calls to `api.anthropic.com/v1/messages` from the browser |
+| Auth | None required (single-user, local) |
+| Sharing | Content is base64-encoded into the URL hash |
+
+The Anthropic API key is stored in a Vite environment variable (`VITE_ANTHROPIC_API_KEY`), which is bundled into the JavaScript at build time.  This is acceptable for demos and academic projects — in production, API calls should be proxied through a backend to keep the key secret.
+
+---
+
+## AI pipeline
+
+### Structured output via tool_use
+
+All AI calls use Claude's **tool_use** (function-calling) feature with `tool_choice` set to force a specific tool.  This guarantees that the API returns a JSON object matching a schema we define — there is no regex parsing of free text and no risk of parse errors.
+
+### Auto-tagging
+
+1. When new content is added, the `useContentTags` hook detects un-tagged items.
+2. All un-tagged items are batched into a single Claude call to minimise cost.
+3. Each item's title **and** the oEmbed author/channel name are sent — this enriches vague titles (e.g. "Episode 12 | channel: 3Blue1Brown").
+4. Claude is constrained to the 18-tag vocabulary via the tool schema's `enum` field.
+5. Tags are saved to `localStorage` and are not re-generated on subsequent renders.
+
+### Semantic search
+
+1. The user types a query and selects AI, Keyword, or Compare mode.
+2. In AI mode, Claude receives the query and a numbered list of all saved items.
+3. Claude returns a ranked list with a 0–1 relevance score and one-line reason per match (tool_use schema enforces the types).
+4. Results are displayed in rank order; the score and reason appear below each card.
+5. In Keyword mode, a pure substring search runs client-side with no API call.
+6. In Compare mode, both paths run in parallel and results appear side-by-side so you can observe differences in coverage and ordering.
+
+### Chatbot
+
+A floating panel that sends the full content inventory as a system prompt and handles free-form conversational queries.
+
+### Cost logging
+
+Every Claude API response includes `usage.input_tokens` and `usage.output_tokens`.  The app reads these and logs an estimated USD cost to the browser console (DevTools > Console).  Per-token prices are defined as named constants in `src/ai/costs.ts` — update them there if pricing changes.
+
+---
+
+## Tech stack
 
 | Layer | Tech |
 |---|---|
 | Framework | React 19 + TypeScript |
 | Styling | Tailwind CSS v4 |
 | Routing | React Router v7 |
-| Build tool | Vite |
-| AI | Anthropic Claude API (Haiku model) |
-| Storage | localStorage (browser) |
+| Build tool | Vite 7 |
+| AI | Anthropic Claude API (`claude-haiku-4-5-20251001`) |
+| Storage | `localStorage` |
 
 ---
 
-## Getting Started
+## Getting started
 
 ### 1. Clone and install
 
@@ -40,123 +90,82 @@ cd brainly-frontend
 npm install
 ```
 
-### 2. Add your Anthropic API key
-
-Create a `.env` file in the root of the project:
+### 2. Add your API key
 
 ```bash
 cp .env.example .env
+# then edit .env and set:
+# VITE_ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Open `.env` and add your key:
+Get a key from [console.anthropic.com](https://console.anthropic.com). The app works without a key — AI features are skipped and keyword search is used as a fallback.
 
-```
-VITE_ANTHROPIC_API_KEY=your_api_key_here
-```
-
-Get a free API key from [console.anthropic.com](https://console.anthropic.com).
-
-> The app works without the key — AI features (auto-tagging and smart search) are simply skipped. Auto-fill title works without any API key.
-
-### 3. Run the app
+### 3. Run
 
 ```bash
 npm run dev
+# open http://localhost:5173/dashboard
 ```
 
-Open [http://localhost:5173/dashboard](http://localhost:5173/dashboard) in your browser.
+---
+
+## Evaluation harness
+
+See `eval/README.md` for the full guide.  Short version:
+
+1. Edit `public/eval/ground-truth.json` — add items with correct tags and queries with relevant item IDs.
+2. Open `http://localhost:5173/eval`.
+3. Click **Load**, then **Run Tagging Eval** and/or **Run Search Eval**.
+4. Download the results JSON.
 
 ---
 
-## How to use
-
-### Adding content
-1. Click **Add Content** (top right)
-2. Paste a YouTube or Twitter/X link — the title fills in automatically
-3. Edit the title if you want, then click **Submit**
-4. The card appears instantly on the dashboard
-
-### Filtering
-- Click **Twitter** or **Youtube** in the sidebar to filter by type
-- Click any topic tag in the **Topics** section of the sidebar to filter by AI-generated tag
-- Click the same filter again to clear it
-
-### AI Smart Search
-- Type anything in the search bar (e.g. `"coding tutorials"`, `"news about tech"`)
-- Press Enter or click **Search**
-- Claude finds matching content semantically — not just keyword matching
-- Click **Clear search** to go back to all content
-
-### Deleting content
-- Click the trash icon on any card to delete it
-
-### Share Brain
-- Click **Share Brain** (top right)
-- A link is copied to your clipboard
-- Send it to anyone — they open the link and see all your saved cards
-
----
-
-## AI Features
-
-### Auto-fill title (free, no API key)
-When you paste a YouTube or Twitter link into the Add Content modal:
-- The type (YouTube / Twitter) is detected automatically
-- The title is fetched from the free oEmbed API and filled in
-- Works with `youtube.com`, `youtu.be`, `twitter.com`, and `x.com` links
-
-### Auto-tagging
-Every time you add content, Claude reads the title and automatically assigns 2–3 topic tags from a fixed list:
-
-`programming · design · finance · music · sports · news · humor · science · health · business · education · entertainment · technology · politics · art · cooking · travel · gaming`
-
-Tags are saved in localStorage so they are not regenerated on every page load.
-
-### Smart Search
-Uses Claude to understand your search intent. For example:
-- `"react tutorials"` finds videos about React even if the title says "hooks explained"
-- `"funny tweets"` finds humorous Twitter content
-- Falls back to simple keyword matching if no API key is set
-
----
-
-## Project Structure
+## Project structure
 
 ```
 src/
+├── ai/
+│   ├── prompts.ts          # All Claude API calls (tool_use, tagging, search, keyword fallback)
+│   └── costs.ts            # Token pricing constants + logCost()
+├── types.ts                # Shared Content, RankedContent types
 ├── pages/
-│   ├── Dashboard.tsx          # Main page — content grid + all state
-│   ├── Home.tsx               # Landing page
-│   ├── SharedBrainView.tsx    # View a shared brain link
-│   └── SharedBrain.tsx        # Legacy shared brain page
+│   ├── Dashboard.tsx       # Main page — content grid + search + state
+│   ├── EvalHarness.tsx     # /eval — evaluation page
+│   ├── SharedBrainView.tsx # Read-only shared brain view
+│   └── Home.tsx
 ├── components/ui/
-│   ├── Card.tsx               # Content card (YouTube embed / Twitter embed)
-│   ├── Sidebar.tsx            # Type filters + AI topic tag filters
-│   ├── CreateContentModal.tsx # Add content form with auto-fill from URL
-│   └── SmartSearch.tsx        # AI search bar
+│   ├── Card.tsx            # Content card (YouTube embed / tweet)
+│   ├── SmartSearch.tsx     # AI / Keyword / Compare search modes
+│   ├── CreateContentModal.tsx  # Add content + oEmbed auto-fill
+│   ├── AIChatbot.tsx       # Floating conversational assistant
+│   └── Sidebar.tsx         # Type + tag filters
 ├── hooks/
-│   └── useContentTags.ts      # Auto-tagging hook (calls Claude API)
-├── utils/
-│   └── tagStore.ts            # localStorage helpers for tags
-└── icons/                     # SVG icon components
+│   └── useContentTags.ts   # Auto-tagging hook
+└── utils/
+    └── tagStore.ts         # localStorage tag helpers
+
+eval/
+└── README.md               # How to fill in ground truth and run evaluation
+
+public/
+└── eval/
+    └── ground-truth.json   # Template — fill this in before running /eval
 ```
 
 ---
 
-## Environment Variables
+## Environment variables
 
-| Variable | Description |
-|---|---|
-| `VITE_ANTHROPIC_API_KEY` | Anthropic API key for auto-tagging and smart search |
-
-> `.env` is gitignored and will never be pushed to GitHub. Use `.env.example` as a template.
+| Variable | Required | Description |
+|---|---|---|
+| `VITE_ANTHROPIC_API_KEY` | For AI features | Claude API key |
 
 ---
 
-## Notes
+## Known limitations
 
-- Content is stored in `localStorage` — clearing browser storage will erase your saved cards
-- The API key is used directly from the browser (fine for demos, use a backend proxy in production)
-- The Share Brain feature encodes your content as a base64 URL — no server required
-- Auto-fill title uses YouTube and Twitter oEmbed APIs — both are free and require no authentication
-
+- **API key exposed in browser** — the key is bundled into the JS bundle. Fine for demos; use a backend proxy for production.
+- **No server-side storage** — all content lives in `localStorage`. Clearing browser data erases everything. No cross-device sync.
+- **oEmbed CORS** — Twitter's oEmbed endpoint may be blocked by some browser extensions. Title auto-fill falls back silently.
+- **Haiku model** — uses `claude-haiku-4-5-20251001` (fast and cheap). Upgrade to Sonnet for higher-quality tagging/search at higher cost.
+- **Evaluation is manual** — the eval harness measures what Claude produces against your personal ground-truth judgements. It does not have a pre-built benchmark dataset.

@@ -1,11 +1,24 @@
+/**
+ * React hook that auto-tags newly added content items.
+ *
+ * Behaviour:
+ *   - On every render where contents changes, checks which items lack tags.
+ *   - Sends only the un-tagged items to Claude in a single batch call.
+ *   - Tags are persisted to localStorage so they survive page reloads and are
+ *     not regenerated on subsequent renders.
+ *   - No-ops gracefully when the API key is absent.
+ *
+ * Task 4 enrichment:
+ *   If a content item carries metadata.author (the YouTube channel name or
+ *   Twitter username fetched at add-time), that string is forwarded to the
+ *   tagging API as extra context.  This significantly improves tag quality
+ *   for short or vague titles (e.g. "Episode 12 | channel: 3Blue1Brown"
+ *   is much clearer than "Episode 12" alone).
+ */
 import { useState, useEffect } from "react";
 import { loadTagMap, saveTagMap } from "../utils/tagStore";
-
-interface Content {
-  title: string;
-  link: string;
-  type: string;
-}
+import { callTaggingAPI, type TaggingItem } from "../ai/prompts";
+import type { Content } from "../types";
 
 export function useContentTags(contents: Content[]) {
   const [tagMap, setTagMap] = useState<Record<string, string[]>>(loadTagMap);
@@ -17,51 +30,39 @@ export function useContentTags(contents: Content[]) {
     const untagged = contents.filter((c) => !current[c.link]);
 
     if (untagged.length === 0) {
+      // All items already have tags — just sync state with storage
       setTagMap(current);
       return;
     }
 
     const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
     if (!apiKey) {
-      console.warn("[AutoTag] VITE_ANTHROPIC_API_KEY not found — restart dev server after adding .env");
+      console.warn(
+        "[AutoTag] VITE_ANTHROPIC_API_KEY not set — " +
+        "restart the dev server after adding it to .env"
+      );
       return;
     }
-    console.log("[AutoTag] Generating tags for:", untagged.map(c => c.title));
 
-    const list = untagged
-      .map((c, i) => `${i}. [${c.type.toUpperCase()}] "${c.title}"`)
-      .join("\n");
+    // Build the items array, attaching author metadata where available.
+    // The index field must match position in the untagged array so the API
+    // response can be mapped back to the right content item.
+    const items: TaggingItem[] = untagged.map((c, i) => ({
+      index: i,
+      type: c.type,
+      title: c.title,
+      author: c.metadata?.author, // undefined is fine — the API handles it
+    }));
 
-    fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 512,
-        messages: [
-          {
-            role: "user",
-            content: `For each content item, assign 2-3 topic tags. Only use tags from: programming, design, finance, music, sports, news, humor, science, health, business, education, entertainment, technology, politics, art, cooking, travel, gaming.\n\nReturn ONLY a raw JSON object where keys are 0-based indices and values are tag arrays. Example: {"0":["programming","education"],"1":["finance"]}\n\nItems:\n${list}`,
-          },
-        ],
-      }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        const text: string = data.content?.[0]?.text ?? "{}";
-        const match = text.match(/\{[\s\S]*\}/);
-        if (!match) return;
-        const indexMap: Record<string, string[]> = JSON.parse(match[0]);
+    console.log("[AutoTag] Generating tags for:", untagged.map((c) => c.title));
+
+    callTaggingAPI(items, apiKey)
+      .then(({ tagsByIndex }) => {
         const newEntries: Record<string, string[]> = {};
-        Object.entries(indexMap).forEach(([idx, tags]) => {
+        for (const [idx, tags] of Object.entries(tagsByIndex)) {
           const item = untagged[Number(idx)];
-          if (item) newEntries[item.link] = tags as string[];
-        });
+          if (item) newEntries[item.link] = tags;
+        }
         const updated = { ...current, ...newEntries };
         console.log("[AutoTag] Tags generated:", newEntries);
         saveTagMap(updated);
@@ -70,6 +71,7 @@ export function useContentTags(contents: Content[]) {
       .catch((err) => console.error("[AutoTag] Failed:", err));
   }, [contents]);
 
+  // Derive a sorted list of all distinct tags across the current content set
   const allTags = [...new Set(contents.flatMap((c) => tagMap[c.link] ?? []))].sort();
 
   return { tagMap, allTags };

@@ -1,0 +1,45 @@
+{
+  "_instructions": [
+    "1. Delete every object that has an '_example' key — those are just illustrations.",
+    "2. Add your own real items in the 'items' array.",
+    "3. Add your own real queries in the 'queries' array.",
+    "4. See eval/README.md for the full field reference.",
+    "5. Open http://localhost:5173/eval and click 'Run Evaluation'."
+  ],
+
+  "items": [
+    {
+      "_example": "DELETE THIS ROW",
+      "id": "ex-1",
+      "title": "React Hooks Full Tutorial — Learn useState, useEffect and more",
+      "link": "https://example.com/react-hooks-tutorial",
+      "type": "youtube",
+      "metadata": { "author": "Fireship", "provider": "YouTube" },
+      "correct_tags": ["programming", "education", "technology"]
+    },
+    {
+      "_example": "DELETE THIS ROW",
+      "id": "ex-2",
+      "title": "Tweet by @paulg",
+      "link": "https://twitter.com/paulg/status/000000000",
+      "type": "twitter",
+      "metadata": { "author": "Paul Graham", "provider": "Twitter" },
+      "correct_tags": ["business", "education"]
+    }
+  ],
+
+  "queries": [
+    {
+      "_example": "DELETE THIS ROW",
+      "id": "q-1",
+      "query": "programming tutorials",
+      "relevant_item_ids": ["ex-1"]
+    },
+    {
+      "_example": "DELETE THIS ROW",
+      "id": "q-2",
+      "query": "startup advice",
+      "relevant_item_ids": ["ex-2"]
+    }
+  ]
+}
